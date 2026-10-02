@@ -1,0 +1,37 @@
+html,
+body,
+#root {
+  height: 100%;
+  background: #101112;
+}
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+:focus-visible {
+  outline: 2px solid #ff641f;
+  outline-offset: 4px;
+}
+input,
+textarea {
+  caret-color: #ff641f;
+}
+::selection {
+  background: #ff641f55;
+}
+::-webkit-scrollbar {
+  width: 5px;
+  height: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #383c3b;
+  border-radius: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}

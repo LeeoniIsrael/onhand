@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "OnHand",
+    "slug": "OnHand",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/brand/icon.png",
+    "scheme": "onhand",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.onhand.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ff641f",
+        "foregroundImage": "./assets/brand/foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.onhand.app"
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/brand/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#101112",
+          "image": "./assets/brand/splash.png",
+          "imageWidth": 76
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Let OnHand attach a photo to your request.",
+          "cameraPermission": "Let OnHand photograph what needs fixing.",
+          "microphonePermission": "Let OnHand record a short problem video."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Let OnHand find help near your home."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

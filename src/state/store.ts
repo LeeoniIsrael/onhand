@@ -10,6 +10,7 @@ import {
   Payment,
   Review,
   Role,
+  Skill,
 } from "../domain/models";
 import { home, makeDraft, pastJobs, workers } from "../domain/seed";
 import { simulatedRouting } from "../domain/marketplace";
@@ -17,6 +18,14 @@ import { transition } from "../domain/lifecycle";
 import { analytics, demoPayments } from "../services/adapters";
 interface AppState {
   role: Role;
+  paymentMethod: string;
+  workerSkills: Skill[];
+  declinedOffers: string[];
+  reports: { id: string; jobId?: string; body: string }[];
+  setPaymentMethod: (method: string) => void;
+  setWorkerSkills: (skills: Skill[]) => void;
+  declineOffer: (id: string, reason: string) => void;
+  report: (body: string, jobId?: string) => void;
   name: string;
   onboarded: boolean;
   available: boolean;
@@ -58,6 +67,22 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       role: "customer",
+      paymentMethod: "Visa",
+      workerSkills: workers[0].skills.map((s) => s.skill),
+      declinedOffers: [],
+      reports: [],
+      setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
+      setWorkerSkills: (workerSkills) => set({ workerSkills }),
+      declineOffer: (id, reason) => {
+        set((s) => ({
+          declinedOffers: [...new Set([...s.declinedOffers, id])],
+        }));
+        get().notify(`Offer declined: ${reason}.`);
+      },
+      report: (body, jobId) =>
+        set((s) => ({
+          reports: [...s.reports, { id: `report-${Date.now()}`, jobId, body }],
+        })),
       name: "Alex",
       onboarded: false,
       available: true,
@@ -195,6 +220,12 @@ export const useStore = create<AppState>()(
         })),
       setCounter: (counter) => set({ counter }),
       acceptWorkerJob: async (job) => {
+        if (
+          !get().available ||
+          !get().workerSkills.includes(job.skill) ||
+          get().declinedOffers.includes(job.id)
+        )
+          throw new Error("This offer is no longer eligible for your account.");
         if (get().jobs.some((j) => j.id === job.id))
           throw new Error("This offer is already closed.");
         if (
@@ -227,6 +258,10 @@ export const useStore = create<AppState>()(
       resetDemo: () =>
         set({
           role: "customer",
+          paymentMethod: "Visa",
+          workerSkills: workers[0].skills.map((s) => s.skill),
+          declinedOffers: [],
+          reports: [],
           draft: makeDraft(),
           jobs: pastJobs,
           activeId: undefined,

@@ -76,7 +76,8 @@ export function WorkerHome() {
     earnings = jobs
       .filter((j) => j.workerId === "worker-0" && j.status === "completed")
       .reduce((sum, j) => sum + j.offer * 0.85 + j.tip, 0),
-    [declined, setDeclined] = useState<string[]>([]);
+    declined = useStore((s) => s.declinedOffers),
+    workerSkills = useStore((s) => s.workerSkills);
   return (
     <Screen
       title="Good work starts here."
@@ -186,6 +187,7 @@ export function WorkerHome() {
         nearbyJobs
           .filter(
             (j) =>
+              workerSkills.includes(j.skill) &&
               !declined.includes(j.id) &&
               !jobs.some((saved) => saved.id === j.id),
           )
@@ -224,7 +226,7 @@ export function WorkerHome() {
                   title="Pass"
                   secondary
                   onPress={() => {
-                    setDeclined((v) => [...v, job.id]);
+                    useStore.getState().declineOffer(job.id, "not a fit");
                     useStore
                       .getState()
                       .notify(
@@ -393,9 +395,7 @@ export function OfferScreen() {
                   secondary
                   compact
                   onPress={() => {
-                    useStore
-                      .getState()
-                      .notify(`Offer declined: ${r.toLowerCase()}.`);
+                    useStore.getState().declineOffer(id, r.toLowerCase());
                     go("/worker");
                   }}
                 />
@@ -527,7 +527,9 @@ export function EarningsScreen() {
 }
 export function WorkerOnboarding() {
   const [step, setStep] = useState(0),
-    [selected, setSelected] = useState<Skill[]>(["plumbing.leak"]),
+    [selected, setSelected] = useState<Skill[]>(
+      () => useStore.getState().workerSkills,
+    ),
     [consent, setConsent] = useState(false);
   return (
     <Screen
@@ -661,6 +663,7 @@ export function WorkerOnboarding() {
             disabled={!consent}
             icon={ArrowRight}
             onPress={() => {
+              useStore.getState().setWorkerSkills(selected);
               useStore.getState().setRole("worker");
               go("/worker");
             }}

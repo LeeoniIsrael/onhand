@@ -65,6 +65,7 @@ export default function RequestScreen() {
     edit = useStore((s) => s.editDraft),
     blocked = useStore((s) => s.blocked),
     jobs = useStore((s) => s.jobs),
+    paymentMethod = useStore((s) => s.paymentMethod),
     [schedule, setSchedule] = useState(draft.scheduledAt || ""),
     [submitting, setSubmitting] = useState(false),
     mounted = useRef(true);
@@ -873,7 +874,8 @@ export default function RequestScreen() {
             <Row>
               <CreditCard color={c.muted} size={18} />
               <Txt color={c.muted} size={12}>
-                Demo Visa •••• 4242 · No real charge
+                Demo {paymentMethod} ••••{" "}
+                {paymentMethod === "Visa" ? "4242" : "5556"} · No real charge
               </Txt>
             </Row>
           </Surface>

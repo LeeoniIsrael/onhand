@@ -278,7 +278,8 @@ export function AddressesScreen() {
   );
 }
 export function PaymentMethodsScreen() {
-  const [method, setMethod] = useState("Visa"),
+  const method = useStore((s) => s.paymentMethod),
+    setMethod = useStore((s) => s.setPaymentMethod),
     [adding, setAdding] = useState(false);
   return (
     <Screen
@@ -550,6 +551,7 @@ export function SafetyScreen() {
                     )
                       useStore.getState().advance(job.id, "disputed");
                   }
+                  useStore.getState().report(reason, id);
                   setSent(true);
                 }}
               />

@@ -2,7 +2,19 @@ import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 export const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  { auth: { persistSession: false, autoRefreshToken: false } },
+  {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      fetch: (input, init) =>
+        fetch(input, {
+          ...init,
+          signal: AbortSignal.any([
+            ...(init?.signal ? [init.signal] : []),
+            AbortSignal.timeout(30000),
+          ]),
+        }),
+    },
+  },
 );
 export const localTests =
   Deno.env.get("ONHAND_LOCAL_TESTS") === "true" &&
@@ -21,7 +33,7 @@ export function headers(request: Request) {
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": accepted ? origin! : "null",
     "Access-Control-Allow-Headers":
-      "authorization, content-type, apikey, x-client-info",
+      "authorization, content-type, apikey, x-client-info, x-job-id, x-photo-id",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     Vary: "Origin",
   };
@@ -38,6 +50,27 @@ export async function authenticate(request: Request) {
     throw new Error("Authentication required");
   const { data, error } = await db.auth.getUser(authorization.slice(7));
   if (error || !data.user) throw new Error("Authentication required");
+  try {
+    const claims = JSON.parse(
+      atob(
+        authorization
+          .slice(7)
+          .split(".")[1]
+          .replace(/-/g, "+")
+          .replace(/_/g, "/"),
+      ),
+    );
+    if (
+      !claims.session_id ||
+      !(await rpc<boolean>("valid_actor_session", {
+        p_actor: data.user.id,
+        p_session: claims.session_id,
+      }))
+    )
+      throw new Error("Authentication required");
+  } catch {
+    throw new Error("Authentication required");
+  }
   return data.user;
 }
 export async function payload(request: Request) {

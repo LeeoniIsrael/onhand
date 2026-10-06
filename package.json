@@ -74,7 +74,7 @@
     "local:db": "npx supabase@latest start --exclude studio,imgproxy,logflare,vector,postgres-meta,supavisor",
     "local:functions": "npx supabase@latest functions serve --env-file supabase/.env.local --no-verify-jwt",
     "check": "npm run lint && npm run typecheck && npm test",
-    "check:edge": "npx deno check --config supabase/functions/deno.json --node-modules-dir=none supabase/functions/payments/index.ts supabase/functions/stripe-webhook/index.ts supabase/functions/account/index.ts supabase/functions/connect/index.ts supabase/functions/operations/index.ts",
+    "check:edge": "npx deno check --config supabase/functions/deno.json --node-modules-dir=none supabase/functions/payments/index.ts supabase/functions/stripe-webhook/index.ts supabase/functions/account/index.ts supabase/functions/connect/index.ts supabase/functions/operations/index.ts supabase/functions/media/index.ts",
     "release:check": "node scripts/release-check.mjs",
     "test:auth": "tsx tests/auth.integration.mts",
     "postinstall": "node scripts/patch-query-decoder.mjs",

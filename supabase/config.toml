@@ -432,3 +432,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.operations]
 verify_jwt = false
+
+[functions.media]
+verify_jwt = false

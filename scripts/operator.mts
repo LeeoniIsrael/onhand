@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 const url = process.env.ONHAND_OPERATOR_URL;
 const key = process.env.ONHAND_OPERATOR_KEY;
@@ -40,6 +41,13 @@ else if (command === "workers") {
     p_operator: args[2],
     p_note: args.slice(3).join(" "),
   });
+} else if (command === "configure-region") {
+  await rpc("configure_service_region", {
+    p_zone: id,
+    p_geometry: JSON.parse(readFileSync(args[0], "utf8")),
+    p_operator: args[1],
+    p_note: args.slice(2).join(" "),
+  });
 } else if (command === "review-license") {
   await rpc("review_license", {
     p_worker: id,
@@ -62,5 +70,5 @@ else if (command === "workers") {
   });
 } else
   throw new Error(
-    "Use health | workers | reports | review-worker ID approve|suspend insured|uninsured OPERATOR NOTE | review-license ID SKILL ZONE ISO_EXPIRY OPERATOR NOTE | open-dispute JOB NOTE | resolve-dispute JOB completed|cancelled NOTE",
+    "Use health | workers | reports | review-worker ID approve|suspend insured|uninsured OPERATOR NOTE | configure-region ZONE GEOJSON_FILE OPERATOR NOTE | review-license ID SKILL ZONE ISO_EXPIRY OPERATOR NOTE | open-dispute JOB NOTE | resolve-dispute JOB completed|cancelled NOTE",
   );

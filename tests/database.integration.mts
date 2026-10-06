@@ -54,6 +54,31 @@ async function action(
     p_key: key,
   });
 }
+async function media(
+  u: (typeof users)[number],
+  job: string,
+  bytes: Buffer,
+  key = randomUUID(),
+  mime = "image/png",
+) {
+  const token = (await u.api.auth.getSession()).data.session!.access_token;
+  const response = await fetch(`${config.API_URL}/functions/v1/media`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": mime,
+      "x-job-id": job,
+      "x-photo-id": key,
+    },
+    body: bytes,
+  });
+  const result = await response.json();
+  return {
+    error: response.ok ? null : new Error(result.error),
+    path: result.path as string,
+    status: response.status,
+  };
+}
 try {
   const customer = await user("customer"),
     other = await user("customer"),
@@ -169,6 +194,13 @@ try {
       const offer = workerHome.data.offers.find((o: any) => o.job.id === jobId);
       assert.ok(offer);
       assert.equal(offer.job.address, null);
+      assert.equal("score" in offer, false);
+      assert.equal("reasons" in offer, false);
+      assert.equal(offer.distance_m % 1000, 0);
+      assert.equal(offer.eta_seconds % 300, 0);
+      assert.ok(
+        (await w1.api.from("job_offers").select("score,distance_m")).error,
+      );
       assert.equal(
         (await w1.api.from("job_private").select("*").eq("job_id", jobId)).data!
           .length,
@@ -177,6 +209,63 @@ try {
       assert.ok(
         (await other.api.rpc("marketplace_job", { p_job: jobId })).error,
       );
+    },
+  );
+  await check(
+    "Realtime offer updates redact precise matching columns",
+    async () => {
+      let resolveChange: (value: any) => void = () => {};
+      const changed = new Promise<any>((resolve, reject) => {
+        resolveChange = resolve;
+        const timeout = setTimeout(
+          () => reject(new Error("Realtime update did not arrive")),
+          10000,
+        );
+        void new Promise<void>((resolve) => {
+          const original = resolveChange;
+          resolveChange = (value) => {
+            clearTimeout(timeout);
+            original(value);
+            resolve();
+          };
+        });
+      });
+      const channel = w1.api
+        .channel(`privacy-${randomUUID()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "job_offers",
+            filter: `worker_id=eq.${w1.id}`,
+          },
+          resolveChange,
+        );
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Realtime subscription unavailable")),
+          10000,
+        );
+        channel.subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            clearTimeout(timer);
+            resolve();
+          } else if (status === "CHANNEL_ERROR") {
+            clearTimeout(timer);
+            reject(new Error("Realtime subscription rejected"));
+          }
+        });
+      });
+      await db.query(
+        "update public.job_offers set score=score+0.000001 where job_id=$1 and worker_id=$2",
+        [jobId, w1.id],
+      );
+      const event = await changed;
+      assert.equal(event.new.job_id, jobId);
+      assert.equal("score" in event.new, false);
+      assert.equal("distance_m" in event.new, false);
+      await w1.api.removeChannel(channel);
     },
   );
   await check(
@@ -203,12 +292,24 @@ try {
           })
         ).error,
       );
-      assert.ifError(
+      assert.ok(
         (
           await customer.api.storage
             .from("job-photos")
             .upload(path, bytes, { contentType: "image/png" })
         ).error,
+      );
+      assert.ok(
+        (
+          await customer.api.storage
+            .from("job-photos")
+            .createSignedUploadUrl(path)
+        ).error,
+      );
+      assert.ok((await media(other, jobId, bytes)).error);
+      assert.ifError(
+        (await media(customer, jobId, bytes, path.split("/")[1].split(".")[0]))
+          .error,
       );
       assert.ifError(
         (
@@ -233,6 +334,66 @@ try {
             .from("job-photos")
             .createSignedUrl(path, 60)
         ).error,
+      );
+    },
+  );
+  await check(
+    "media admission checks content, retries and concurrent upload quotas",
+    async () => {
+      const bytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      const key = randomUUID();
+      const first = await media(customer, jobId, bytes, key);
+      assert.ifError(first.error);
+      assert.ok(
+        (
+          await customer.api.rpc("reserve_media", {
+            p_actor: customer.id,
+            p_job: jobId,
+            p_key: randomUUID(),
+            p_mime: "image/png",
+            p_bytes: bytes.length,
+            p_hash: "a".repeat(64),
+          })
+        ).error,
+      );
+      const invoked = await customer.api.functions.invoke("media", {
+        body: bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        ),
+        headers: {
+          "Content-Type": "image/png",
+          "x-job-id": jobId,
+          "x-photo-id": key,
+        },
+      });
+      assert.ifError(invoked.error);
+      assert.equal(invoked.data.path, first.path);
+      assert.equal((await media(customer, jobId, bytes, key)).path, first.path);
+      assert.ok(
+        (await media(customer, jobId, Buffer.from("not an image"))).error,
+      );
+      const changed = Buffer.from(bytes);
+      changed[changed.length - 1] ^= 1;
+      assert.ok((await media(customer, jobId, changed, key)).error);
+      const huge = Buffer.from(bytes);
+      huge.writeUInt32BE(100000, 16);
+      assert.ok((await media(customer, jobId, huge)).error);
+      const outcomes = await Promise.all(
+        Array.from({ length: 26 }, () => media(customer, jobId, bytes)),
+      );
+      assert.equal(outcomes.filter((result) => !result.error).length, 22);
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from private.media_uploads where job_id=$1",
+            [jobId],
+          )
+        ).rows[0].n,
+        24,
       );
     },
   );
@@ -670,6 +831,80 @@ try {
     },
   );
   await check(
+    "account deletion removes orphaned uploads and immediately rejects stale JWTs",
+    async () => {
+      const disposable = await user("customer");
+      const saved = await action(disposable, "save_address", {
+        street: "701 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      const created = await action(disposable, "create_job", {
+        ...draft,
+        address_id: saved.data.id,
+      });
+      assert.ifError(created.error);
+      const path = `${created.data.id}/${randomUUID()}.png`;
+      const bytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      assert.ifError(
+        (
+          await media(
+            disposable,
+            created.data.id,
+            bytes,
+            path.split("/")[1].split(".")[0],
+          )
+        ).error,
+      );
+      assert.ifError(
+        (await action(disposable, "cancel", { job_id: created.data.id })).error,
+      );
+      const token = (await disposable.api.auth.getSession()).data.session!
+        .access_token;
+      const erased = await fetch(`${config.API_URL}/functions/v1/account`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "delete" }),
+      });
+      assert.equal(erased.status, 200, await erased.text());
+      assert.ok((await admin.auth.admin.getUserById(disposable.id)).error);
+      assert.equal(
+        (await disposable.api.from("jobs").select("id")).data!.length,
+        0,
+      );
+      assert.equal(
+        (await disposable.api.from("profiles").select("id")).data!.length,
+        0,
+      );
+      assert.ok(
+        (
+          await disposable.api.storage
+            .from("job-photos")
+            .upload(`${created.data.id}/${randomUUID()}.png`, bytes, {
+              contentType: "image/png",
+            })
+        ).error,
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from storage.objects where bucket_id='job-photos' and name=$1",
+            [path],
+          )
+        ).rows[0].n,
+        0,
+      );
+    },
+  );
+  await check(
     "Edge ingress rejects foreign origins, invalid tokens and unsigned webhooks",
     async () => {
       const endpoint = `${config.API_URL}/functions/v1/payments`;
@@ -795,6 +1030,54 @@ try {
         "insert into public.blocked_pairs(customer_id,worker_id) select $1,id from public.workers where id<>$2",
         [requester.id, specialist.id],
       );
+      const geometry = {
+        type: "Polygon",
+        coordinates: [
+          [
+            [-73.98, 40.69],
+            [-73.94, 40.69],
+            [-73.94, 40.73],
+            [-73.98, 40.73],
+            [-73.98, 40.69],
+          ],
+        ],
+      };
+      assert.ifError(
+        (
+          await admin.rpc("configure_service_region", {
+            p_zone: "NY",
+            p_geometry: geometry,
+            p_operator: "Local test operator",
+            p_note:
+              "Synthetic Brooklyn fixture region, not production coverage",
+          })
+        ).error,
+      );
+      const wrong = await action(requester, "save_address", {
+        street: "601 Local Street",
+        city: "Elsewhere",
+        zone: "NY",
+        latitude: 34.05,
+        longitude: -118.24,
+      });
+      assert.ifError(wrong.error);
+      assert.equal(
+        (
+          await requester.api.rpc("licensed_address_available", {
+            p_address: wrong.data.id,
+          })
+        ).data,
+        false,
+      );
+      assert.ok(
+        (
+          await action(requester, "create_job", {
+            ...draft,
+            address_id: wrong.data.id,
+            skill: "electrical.fixture",
+          })
+        ).error,
+      );
       const scheduled = await action(requester, "create_job", {
         ...draft,
         address_id: saved.data.id,
@@ -852,9 +1135,84 @@ try {
       );
     },
   );
+  await check(
+    "logout revokes raw-table, command and Edge access for a retained JWT",
+    async () => {
+      const signed = await user("customer");
+      const token = (await signed.api.auth.getSession()).data.session!
+        .access_token;
+      assert.ifError((await signed.api.auth.signOut({ scope: "local" })).error);
+      const retained = createClient(config.API_URL, config.ANON_KEY, {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      });
+      const rows = await retained.from("profiles").select("id");
+      assert.ifError(rows.error);
+      assert.deepEqual(rows.data, []);
+      assert.ok((await retained.rpc("marketplace_home")).error);
+      const endpoint = await fetch(`${config.API_URL}/functions/v1/payments`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: "{}",
+      });
+      assert.equal(endpoint.status, 401);
+    },
+  );
+  await check(
+    "media reservation budget caps a customer's daily uploads across jobs",
+    async () => {
+      const requester = await user("customer");
+      const address = await action(requester, "save_address", {
+        street: "801 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      assert.ifError(address.error);
+      const jobs: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const created = await action(requester, "create_job", {
+          ...draft,
+          address_id: address.data.id,
+        });
+        assert.ifError(created.error);
+        jobs.push(created.data.id);
+      }
+      for (let i = 0; i < 100; i++)
+        assert.ifError(
+          (
+            await admin.rpc("reserve_media", {
+              p_actor: requester.id,
+              p_job: jobs[Math.min(4, Math.floor(i / 24))],
+              p_key: randomUUID(),
+              p_mime: "image/png",
+              p_bytes: 69,
+              p_hash: "a".repeat(64),
+            })
+          ).error,
+        );
+      assert.ok(
+        (
+          await admin.rpc("reserve_media", {
+            p_actor: requester.id,
+            p_job: jobs[4],
+            p_key: randomUUID(),
+            p_mime: "image/png",
+            p_bytes: 69,
+            p_hash: "a".repeat(64),
+          })
+        ).error,
+      );
+    },
+  );
   console.log(
     `${passed} database integration checks passed against PostgreSQL ${(await db.query("show server_version")).rows[0].server_version}`,
   );
 } finally {
+  await Promise.all(users.map((user) => user.api.removeAllChannels()));
   await db.end();
 }

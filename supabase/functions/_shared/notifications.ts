@@ -62,22 +62,27 @@ export async function notifyBatch(events: NotificationEvent[]) {
       }
     }
     const actors = [...new Set(messages.map((m) => m.actor))];
-    const recipients = actors.length
-      ? await rpc<{ actor: string; token: string }[]>("push_recipients_many", {
-          p_actors: actors,
-        })
-      : [];
+    const tokens = new Map<string, string[]>();
+    for (let i = 0; i < actors.length; i += 1000) {
+      const recipients = await rpc<{ actor: string; token: string }[]>(
+        "push_recipients_many",
+        { p_actors: actors.slice(i, i + 1000) },
+      );
+      for (const recipient of recipients)
+        tokens.set(recipient.actor, [
+          ...(tokens.get(recipient.actor) || []),
+          recipient.token,
+        ]);
+    }
     const packets = messages.flatMap((message) =>
-      recipients
-        .filter((r) => r.actor === message.actor)
-        .map((r) => ({
-          to: r.token,
-          title: message.title,
-          body: "Open OnHand to see the update.",
-          data: { jobId: message.jobId, kind: message.kind || "job" },
-          sound: "default",
-          channelId: "jobs",
-        })),
+      (tokens.get(message.actor) || []).map((token) => ({
+        to: token,
+        title: message.title,
+        body: "Open OnHand to see the update.",
+        data: { jobId: message.jobId, kind: message.kind || "job" },
+        sound: "default",
+        channelId: "jobs",
+      })),
     );
     const receipts: { ticket: string; token: string }[] = [];
     const headers: Record<string, string> = {

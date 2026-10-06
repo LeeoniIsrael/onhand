@@ -1,12 +1,12 @@
 import {
   authenticate,
-  db,
   payload,
   preflight,
   publicError,
   reply,
   rpc,
 } from "../_shared/server.ts";
+import { eraseMediaAndAuth } from "../_shared/accounts.ts";
 Deno.serve(async (request) => {
   const early = preflight(request);
   if (early) return early;
@@ -18,9 +18,9 @@ Deno.serve(async (request) => {
     await rpc("account_deletion_ready", { p_actor: actor.id });
     await rpc("clear_account_devices", { p_actor: actor.id });
     await rpc("erase_account", { p_actor: actor.id });
-    const { error } = await db.auth.admin.deleteUser(actor.id);
-    if (error) throw error;
-    return reply(request, { deleted: true });
+    // Large erasures continue through the durable queue. RLS already denies access.
+    const finished = await eraseMediaAndAuth(actor.id).catch(() => false);
+    return reply(request, { deleted: true, cleanup_pending: !finished });
   } catch (error) {
     const message = publicError(error);
     return reply(

@@ -1,3 +1,4 @@
+import { eraseMediaAndAuth } from "../_shared/accounts.ts";
 import { notifyBatch, receiptBatch } from "../_shared/notifications.ts";
 import { db, reply, rpc } from "../_shared/server.ts";
 import {
@@ -64,30 +65,10 @@ Deno.serve(async (request) => {
               event.topic === "capture_payment" ? "capture" : "cancel",
             );
         } else if (event.topic === "delete_account_media") {
-          const { data: photos } = await db
-            .from("job_photos")
-            .select("storage_path")
-            .eq("owner_id", event.aggregate_id)
-            .limit(100);
-          if (photos?.length) {
-            const { error } = await db.storage
-              .from("job-photos")
-              .remove(photos.map((p) => p.storage_path));
-            if (error) throw error;
-            const { error: deleteError } = await db
-              .from("job_photos")
-              .delete()
-              .eq("owner_id", event.aggregate_id)
-              .in(
-                "storage_path",
-                photos.map((p) => p.storage_path),
-              );
-            if (deleteError) throw deleteError;
-            if (photos.length === 100) {
-              await rpc("continue_outbox", { p_id: event.id });
-              handled++;
-              return;
-            }
+          if (!(await eraseMediaAndAuth(event.aggregate_id))) {
+            await rpc("continue_outbox", { p_id: event.id });
+            handled++;
+            return;
           }
         } else throw new Error("Unsupported outbox event");
         handled++;
@@ -96,6 +77,17 @@ Deno.serve(async (request) => {
       }
       await rpc("finish_outbox", { p_id: event.id, p_error: error });
     }
+    const operations = events.filter(
+      (e) =>
+        ![
+          "offer_notification",
+          "message_notification",
+          "job_matched",
+          "push_receipt",
+        ].includes(e.topic),
+    );
+    for (let i = 0; i < operations.length; i += 10)
+      await Promise.all(operations.slice(i, i + 10).map(handle));
     const notifications = events.filter((e) =>
       ["offer_notification", "message_notification", "job_matched"].includes(
         e.topic,
@@ -106,11 +98,6 @@ Deno.serve(async (request) => {
     const receipts = events.filter((e) => e.topic === "push_receipt");
     await receiptBatch(receipts);
     handled += receipts.length;
-    const operations = events.filter(
-      (e) => !notifications.includes(e) && !receipts.includes(e),
-    );
-    for (let i = 0; i < operations.length; i += 10)
-      await Promise.all(operations.slice(i, i + 10).map(handle));
     await rpc("cleanup_operations", {});
     if (
       !Deno.env.get("ONHAND_LOCAL_TESTS") &&

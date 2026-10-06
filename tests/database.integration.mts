@@ -116,7 +116,7 @@ try {
       ).error,
     );
     await db.query(
-      "update public.workers set account_standing='good',identity_verified=true where id=$1",
+      "update public.workers set account_standing='good',identity_verified=true,payouts_ready=true where id=$1",
       [w.id],
     );
     assert.ifError(
@@ -129,6 +129,10 @@ try {
       ).error,
     );
   }
+  await db.query(
+    "insert into public.blocked_pairs(customer_id,worker_id) select $1,id from public.workers where id<>all($2::uuid[]) on conflict do nothing",
+    [customer.id, [w1.id, w2.id]],
+  );
   let jobId = "";
   await check(
     "job creation dispatches to eligible workers and retries exactly once",
@@ -308,6 +312,162 @@ try {
         rows.rows.map((o) => action(loser, "accept_offer", { offer_id: o.id })),
       );
       assert.equal(outcomes.filter((o) => !o.error).length, 1);
+    },
+  );
+  await check(
+    "capture events commit once with the approved amount and one payout",
+    async () => {
+      const payment = (
+        await db.query("select * from public.payments where job_id=$1", [jobId])
+      ).rows[0];
+      const event = `evt_${randomUUID()}`;
+      const args = [
+        event,
+        "payment_intent.succeeded",
+        payment.stripe_intent_id,
+        15000,
+        "captured",
+      ];
+      await db.query("select public.apply_stripe_event($1,$2,$3,$4,$5)", args);
+      await db.query("select public.apply_stripe_event($1,$2,$3,$4,$5)", args);
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from public.payouts where payment_id=$1",
+            [payment.id],
+          )
+        ).rows[0].n,
+        1,
+      );
+      assert.equal(
+        (await db.query("select status from public.jobs where id=$1", [jobId]))
+          .rows[0].status,
+        "completed",
+      );
+      assert.ok(
+        (
+          await action(customer, "review", {
+            job_id: jobId,
+            overall: 5,
+            quality: 5,
+            communication: 5,
+            punctuality: 5,
+            note: "Good work",
+          })
+        ).error === null,
+      );
+      assert.ok(
+        (
+          await action(customer, "review", {
+            job_id: jobId,
+            overall: 5,
+            quality: 5,
+            communication: 5,
+            punctuality: 5,
+          })
+        ).error,
+      );
+    },
+  );
+  await check(
+    "agreement edits after assignment are rejected even for service writes",
+    async () => {
+      await assert.rejects(() =>
+        db.query("update public.jobs set offer_cents=16000 where id=$1", [
+          jobId,
+        ]),
+      );
+    },
+  );
+  await check(
+    "support refund reverses earnings and requires a matching financial resolution",
+    async () => {
+      const payment = (
+        await db.query("select * from public.payments where job_id=$1", [jobId])
+      ).rows[0];
+      await db.query("select public.open_dispute($1,$2)", [
+        jobId,
+        "Local test support review",
+      ]);
+      await db.query("select public.record_full_refund($1,$2,$3)", [
+        payment.stripe_intent_id,
+        `refund_${randomUUID()}`,
+        15000,
+      ]);
+      assert.equal(
+        (
+          await db.query(
+            "select state from public.payouts where payment_id=$1",
+            [payment.id],
+          )
+        ).rows[0].state,
+        "reversed",
+      );
+      await db.query("select public.resolve_dispute($1,$2,$3)", [
+        jobId,
+        "cancelled",
+        "Full refund verified in local test",
+      ]);
+      const workerJob = await winner.api.rpc("marketplace_job", {
+        p_job: jobId,
+      });
+      assert.ifError(workerJob.error);
+      assert.equal(workerJob.data.job.address, null);
+      assert.equal(
+        (await winner.api.from("job_private").select("*").eq("job_id", jobId))
+          .data!.length,
+        0,
+      );
+    },
+  );
+  await check(
+    "deletion cannot race a new request into a deleted account",
+    async () => {
+      const deleting = await user("customer");
+      const saved = await action(deleting, "save_address", {
+        street: "201 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      assert.ifError(saved.error);
+      const outcomes = await Promise.allSettled([
+        db.query("select public.erase_account($1)", [deleting.id]),
+        action(deleting, "create_job", { ...draft, address_id: saved.data.id }),
+      ]);
+      const removed = (
+        await db.query("select deleted_at from public.profiles where id=$1", [
+          deleting.id,
+        ])
+      ).rows[0].deleted_at;
+      const count = (
+        await db.query(
+          "select count(*)::int as n from public.jobs where customer_id=$1 and status not in ('completed','cancelled')",
+          [deleting.id],
+        )
+      ).rows[0].n;
+      assert.ok(!(removed && count > 0));
+      assert.ok(outcomes.length === 2);
+    },
+  );
+  await check(
+    "Edge payment and account endpoints reject anonymous requests",
+    async () => {
+      for (const endpoint of ["payments", "account", "connect"]) {
+        const response = await fetch(
+          `${config.API_URL}/functions/v1/${endpoint}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: config.ANON_KEY,
+            },
+            body: "{}",
+          },
+        );
+        assert.equal(response.status, 401);
+      }
     },
   );
   console.log(

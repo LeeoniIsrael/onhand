@@ -180,6 +180,63 @@ try {
     },
   );
   await check(
+    "private photo storage rejects outsiders and forged attachment metadata",
+    async () => {
+      const path = `${jobId}/${randomUUID()}.png`;
+      const bytes = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      assert.ok(
+        (
+          await other.api.storage
+            .from("job-photos")
+            .upload(path, bytes, { contentType: "image/png" })
+        ).error,
+      );
+      assert.ok(
+        (
+          await action(customer, "register_photo", {
+            job_id: jobId,
+            path,
+            kind: "before",
+          })
+        ).error,
+      );
+      assert.ifError(
+        (
+          await customer.api.storage
+            .from("job-photos")
+            .upload(path, bytes, { contentType: "image/png" })
+        ).error,
+      );
+      assert.ifError(
+        (
+          await action(customer, "register_photo", {
+            job_id: jobId,
+            path,
+            kind: "before",
+          })
+        ).error,
+      );
+      assert.ok(
+        (await other.api.storage.from("job-photos").createSignedUrl(path, 60))
+          .error,
+      );
+      assert.ok(
+        (await w1.api.storage.from("job-photos").createSignedUrl(path, 60))
+          .error,
+      );
+      assert.ifError(
+        (
+          await customer.api.storage
+            .from("job-photos")
+            .createSignedUrl(path, 60)
+        ).error,
+      );
+    },
+  );
+  await check(
     "simultaneous acceptance assigns exactly one worker",
     async () => {
       const offers = await db.query(
@@ -468,6 +525,198 @@ try {
         );
         assert.equal(response.status, 401);
       }
+    },
+  );
+  await check(
+    "concurrent bursts cap each worker at three pending offers",
+    async () => {
+      const requester = await user("customer"),
+        workers = [await user("worker"), await user("worker")];
+      const saved = await action(requester, "save_address", {
+        street: "301 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      assert.ifError(saved.error);
+      for (const w of workers) {
+        assert.ifError(
+          (
+            await action(w, "worker_setup", {
+              skills: ["assembly.furniture"],
+              minimum_pay_cents: 5000,
+              service_radius_m: 10000,
+              bio: "Burst fixture",
+            })
+          ).error,
+        );
+        await db.query(
+          "update public.workers set account_standing='good',identity_verified=true,payouts_ready=true where id=$1",
+          [w.id],
+        );
+        assert.ifError(
+          (
+            await action(w, "availability", {
+              available: true,
+              latitude: 40.711,
+              longitude: -73.961,
+            })
+          ).error,
+        );
+      }
+      await db.query(
+        "insert into public.blocked_pairs(customer_id,worker_id) select $1,id from public.workers where id<>all($2::uuid[])",
+        [requester.id, workers.map((w) => w.id)],
+      );
+      const results = await Promise.all(
+        Array.from({ length: 5 }, () =>
+          action(requester, "create_job", {
+            ...draft,
+            address_id: saved.data.id,
+            urgency: "now",
+          }),
+        ),
+      );
+      results.forEach((result) => assert.ifError(result.error));
+      const pressure = await db.query(
+        "select worker_id,count(*)::int as n,count(distinct slot)::int as slots from public.job_offers where worker_id=any($1::uuid[]) and state='pending' group by worker_id",
+        [workers.map((w) => w.id)],
+      );
+      assert.equal(pressure.rows.length, 2);
+      pressure.rows.forEach((row) => {
+        assert.equal(row.n, 3);
+        assert.equal(row.slots, 3);
+      });
+      const expiration = await db.query(
+        "select min(extract(epoch from expires_at-created_at))::int as ttl from public.job_offers where worker_id=any($1::uuid[]) and state='pending'",
+        [workers.map((w) => w.id)],
+      );
+      assert.equal(expiration.rows[0].ttl, 300);
+      assert.ifError(
+        (await action(workers[0], "profile", { name: "A changed identity" }))
+          .error,
+      );
+      const verified = await db.query(
+        "select identity_verified,available,account_standing from public.workers where id=$1",
+        [workers[0].id],
+      );
+      assert.equal(verified.rows[0].identity_verified, false);
+      assert.equal(verified.rows[0].available, false);
+      assert.equal(verified.rows[0].account_standing, "pending");
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from public.job_offers where worker_id=$1 and state='pending'",
+            [workers[0].id],
+          )
+        ).rows[0].n,
+        0,
+      );
+    },
+  );
+  await check(
+    "account endpoint deletes inactive accounts and protects active jobs",
+    async () => {
+      const disposable = await user("customer");
+      const saved = await action(disposable, "save_address", {
+        street: "401 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      assert.ifError(saved.error);
+      const created = await action(disposable, "create_job", {
+        ...draft,
+        address_id: saved.data.id,
+      });
+      assert.ifError(created.error);
+      const token = (await disposable.api.auth.getSession()).data.session!
+        .access_token;
+      const erase = () =>
+        fetch(`${config.API_URL}/functions/v1/account`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "delete" }),
+        });
+      assert.equal((await erase()).status, 409);
+      assert.ifError(
+        (await action(disposable, "cancel", { job_id: created.data.id })).error,
+      );
+      const removed = await erase();
+      assert.equal(removed.status, 200, await removed.text());
+      assert.ok((await admin.auth.admin.getUserById(disposable.id)).error);
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from public.saved_addresses where owner_id=$1",
+            [disposable.id],
+          )
+        ).rows[0].n,
+        0,
+      );
+      assert.equal(
+        (
+          await db.query("select title from public.jobs where id=$1", [
+            created.data.id,
+          ])
+        ).rows[0].title,
+        "Removed job",
+      );
+    },
+  );
+  await check(
+    "Edge ingress rejects foreign origins, invalid tokens and unsigned webhooks",
+    async () => {
+      const endpoint = `${config.API_URL}/functions/v1/payments`;
+      assert.equal(
+        (
+          await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              Origin: "https://attacker.example",
+              "Content-Type": "application/json",
+            },
+            body: "{}",
+          })
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer invalid",
+              "Content-Type": "application/json",
+            },
+            body: "{}",
+          })
+        ).status,
+        401,
+      );
+      assert.equal(
+        (
+          await fetch(`${config.API_URL}/functions/v1/operations`, {
+            method: "POST",
+            body: "{}",
+          })
+        ).status,
+        401,
+      );
+      const webhook = await fetch(
+        `${config.API_URL}/functions/v1/stripe-webhook`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        },
+      );
+      assert.ok([400, 401, 503].includes(webhook.status));
     },
   );
   console.log(

@@ -1,27 +1,26 @@
 import {
   authenticate,
+  db,
   payload,
   preflight,
   publicError,
   reply,
+  rpc,
 } from "../_shared/server.ts";
-import { processPayment } from "../_shared/payments.ts";
 Deno.serve(async (request) => {
   const early = preflight(request);
   if (early) return early;
   try {
     const actor = await authenticate(request);
     const body = await payload(request);
-    if (
-      typeof body.jobId !== "string" ||
-      !/^[0-9a-f-]{36}$/.test(body.jobId) ||
-      typeof body.action !== "string"
-    )
-      return reply(request, { error: "Invalid request" }, 400);
-    return reply(
-      request,
-      await processPayment(actor.id, body.jobId, body.action),
-    );
+    if (body.action !== "delete")
+      return reply(request, { error: "Unsupported action" }, 400);
+    await rpc("account_deletion_ready", { p_actor: actor.id });
+    await rpc("clear_account_devices", { p_actor: actor.id });
+    await rpc("erase_account", { p_actor: actor.id });
+    const { error } = await db.auth.admin.deleteUser(actor.id);
+    if (error) throw error;
+    return reply(request, { deleted: true });
   } catch (error) {
     const message = publicError(error);
     return reply(

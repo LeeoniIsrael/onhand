@@ -1,9 +1,13 @@
-# Implementation checkpoints
+# Checkpoints — 6 October 2026
 
-- Audit: completed initial source review and baseline lint/typecheck/domain tests. See security/AUDIT.md.
-- Database: in progress — real local Supabase/Postgres, migrations and hostile-client/concurrency tests.
-- Runtime/auth: next — separate immutable roles, memory-scoped cache and server mutations.
-- Design: next — three destinations, simple request composer, responsive accessible controls.
-- Payments/operations/release: next — provider test mode, durable recovery, CI and manual setup/cost guide.
+- Initial audit and implementation plan: pushed.
+- PostgreSQL RLS, validated marketplace commands, matching and transaction tests: pushed.
+- Secure Auth sessions, immutable roles and account-scoped server cache: pushed.
+- Financial recovery, identity/credential guards and deletion races: pushed.
+- Authenticated Edge Functions, durable operations, bounded offers/notifications and erasure: pushed.
+- Customer/worker UI overhaul, consolidated routes, scheduling, media and device flows: pushed.
+- Release exports, authentication/storage/concurrency tests, local benchmark, security/cost/operating guides: complete locally; reports and review images pushed.
 
-Existing uncommitted SDK-compatible secure-store/crypto/file-system/Stripe dependencies and Supabase local config are retained as the starting workspace state. No other work is discarded.
+No purchase, hosted deployment, real charge, paid AI call, live worker contact or EAS cloud build has been made. Local fixtures are explicit; public release rejects the local backend flag. Hosted configuration, signed-device/provider QA, external approvals and store submission remain launch gates. The overall production/store goal remains open until those gates are met.
+
+Final local evidence: 22 migrations rebuilt cleanly; 26 unit checks, 29 database/Edge checks, two Auth checks, six Deno handlers, lint/strict TS, 18/18 Expo Doctor and web/iOS/Android exports pass. The 5,000-worker matching benchmark records 83.37 ms p95. Dependency audit retains 21 high toolchain findings from two upstream advisory sources; no compatible forced upgrade was available.

@@ -1,45 +1,64 @@
 # OnHand
 
-Capable help, nearby, now. A dark, map-led Expo app for requesting home repairs at your own price, with a working synthetic marketplace and customer/worker journeys.
+A mobile marketplace: describe the job, name your price, and match with an eligible worker. Customers and workers have separate accounts and interfaces. Expo SDK 57 / React Native 0.86, PostgreSQL 17 with PostGIS, Supabase Auth/Storage/Realtime, and server-side Stripe Connect integrations.
 
-## Run
+**Status:** functioning and tested against a local backend. No hosted deployment, live charges, signed store build or App Store submission has been made. See [handoff](docs/HANDOFF.md) for launch gates, changes and review instructions, and [costs](docs/COSTS.md) before enabling any service.
 
-Node 24 LTS recommended. SDK 57 / React Native 0.86.
+## Run locally
+
+Use Node 24 LTS and Docker. No provider purchase is required.
 
 ```sh
-npm install
-npm run web
-# or
-npm run ios
-npm run android
+npm ci
+npm run local:db
+npm run local:env
+npm run local:seed
 ```
 
-The dependency-local Node 24 binary is included for environments using an unsupported Node major. npm scripts resolve it automatically. No backend keys are required for the demo.
-
-Start on Home → **Find help now** → **Try it with a sample sink leak**. Continue through the details, address, urgency and offer, then request a specialist. Matching uses individual synthetic acceptance probabilities; if nobody accepts, retry or raise the offer. Confirm the match, use the labelled **Demo** progress actions, then approve completion, tip and review.
-
-Open Profile → **Switch to worker mode** to try incoming offers, counters, availability, tracking, earnings and OnHand Score. Profile → **Meet OnHand** opens the welcome/login demo. Settings → **Reset demo progress** restores the seed.
-
-## Verify
+In separate terminals:
 
 ```sh
-npm run typecheck
-npm run lint
-npm test
-npm run export
-npm run export:native
+npm run local:functions
+npm run web
+```
+
+Open `http://localhost:8081`. The seed creates these **local-only fixtures**, all with password `LocalOnHand-2026!`:
+
+| Account | Sign-in choice |
+| --- | --- |
+| customer@onhand.test | Get help |
+| worker@onhand.test | Find work |
+| worker2@onhand.test | Find work |
+
+Use separate browser tabs for separate accounts; web sessions are tab-scoped. Post an Assembly job with the saved local test address and a $120 offer. Accept from a worker account, authorize the explicitly labelled local payment, advance through the work, approve completion and leave a review. Local payments update fixture states; **no money moves**. Rerun `local:seed` to refresh fixture worker locations; only eligible, recently located workers receive offers. Integration tests create additional synthetic accounts, which the main customer fixture excludes from matching.
+
+If `.env.local` already exists, `npm run local:env -- --replace` explicitly replaces it with local configuration. Never replace a hosted environment with this helper. To reset this project's disposable local data, stop app sessions first and run `npx supabase@latest db reset --local`, wait for completion, then seed again. If changing Auth config, stop/start local Supabase to recreate the Auth container; resetting SQL alone does not change its environment.
+
+For a phone, use a development build with a reachable HTTPS test backend and configured EAS project. `127.0.0.1` on a physical phone is the phone itself. Stripe/push require the configured native build; Expo Go is not the release test environment.
+
+## Check
+
+```sh
+npm run check          # lint, strict TypeScript, 26 unit/security regression tests
+npm run check:edge     # six Deno endpoints
+npm run test:auth      # local intercepted-email verification/recovery
+npm run test:db        # local PostgreSQL, RLS, storage, concurrency and Edge checks
+npm run test:load      # rolled-back 5,000-worker SQL benchmark
+npm run export        # web bundle
+npm run export:native # iOS and Android Hermes bundles, not signed binaries
 npx expo-doctor
 ```
 
-## What is real in this build
+The CI workflow is manual (`workflow_dispatch`) to avoid silently consuming paid runner minutes. `npm run release:check` checks operator-supplied release environment variables; production EAS builds invoke it after install. Missing credentials are expected to fail. Passing the guard does not replace hosted integration, physical-device QA or store review.
 
-- React Native screens and shared primitives, Expo Router navigation, spring press feedback, native haptics, image/video picker and foreground location permission flow.
-- Persisted job lifecycle, chat, reviews, address editing, worker blocking and role switching.
-- 28-worker simulator, skill/licensing constraints, Bayesian-weighted reputation, individual acceptance model, dynamic price estimates, dispatch waves, cancellation, no-match states and batch allocation.
-- Supabase/PostGIS schema with RLS, private photo storage policies, transactional acceptance; server-only Stripe Connect authorization/capture and signed-webhook examples.
+## Code map
 
-## What is simulated or not deployed
+- `src/app/`: thin Expo Router screens. Older URLs redirect into the current workflows.
+- `src/marketplace/`: real screens, auth, account-scoped queries and shared controls.
+- `src/services/`: public configuration validation, secure sessions and backend integration.
+- `supabase/migrations/`: authoritative transactions, RLS, matching, financial recovery and maintenance.
+- `supabase/functions/`: authenticated payments, onboarding, deletion, private media, signed webhooks and operations.
+- `tests/`: unit regressions and tests of the actual local backend.
+- `src/domain/`: taxonomy/lifecycle types plus the earlier simulator used by regression tests. The shipped interface does not load simulator people or automatic replies.
 
-Photo classification, specialists and credentials, map/routing data, chat replies, payment methods, charges and payouts are demo data. Supabase is optional and the frontend stays in local demo mode even if credentials are supplied. Production dispatch, auth UI, storage upload orchestration, trained vision, live maps, native Live Activities and payment/verification providers require integration. SQL and Edge Functions are supplied but not deployed or integration-tested. No real worker is contacted and no real money moves.
-
-See [architecture and release boundaries](docs/ARCHITECTURE.md) for the matching model, security design and integration checklist. `.env.example` documents optional client settings. Stripe and service-role secrets belong only in server secrets.
+Read [architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md), [validation](docs/VALIDATION.md) and [security audit](docs/security/AUDIT.md). Keep Stripe, operations and service-role secrets server-side. `.env.example` lists public settings and server secret names.

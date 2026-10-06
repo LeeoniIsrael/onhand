@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import * as Network from "expo-network";
+import { randomUUID } from "expo-crypto";
 import { supabase, subscribeToJob } from "../services/supabase";
 import { clearLegacyStorage } from "../services/legacy-cleanup";
 import { useRequestDraft } from "./draft";
@@ -127,6 +128,7 @@ export function MarketplaceProvider({ children }: React.PropsWithChildren) {
             setAuth((previous) => ({ ...previous, recovering: false })),
         }}
       >
+        <MarketplaceSignals />
         {children}
       </AuthContext.Provider>
     </QueryClientProvider>
@@ -144,6 +146,7 @@ export function useHome(options?: { poll?: boolean }) {
 }
 export function useJob(id: string) {
   const { session } = useAuth();
+  const actorId = session?.user.id;
   const client = useQueryClient();
   const [connected, setConnected] = useState(false);
   const query = useQuery({
@@ -153,7 +156,7 @@ export function useJob(id: string) {
     refetchInterval: connected ? 20000 : 5000,
   });
   useEffect(() => {
-    if (!session || !id) return;
+    if (!actorId || !id) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeToJob(
       id,
@@ -161,10 +164,10 @@ export function useJob(id: string) {
         clearTimeout(timer);
         timer = setTimeout(() => {
           void client.invalidateQueries({
-            queryKey: ["job", session.user.id, id],
+            queryKey: ["job", actorId, id],
           });
           void client.invalidateQueries({
-            queryKey: ["home", session.user.id],
+            queryKey: ["home", actorId],
           });
         }, 100);
       },
@@ -174,14 +177,15 @@ export function useJob(id: string) {
       clearTimeout(timer);
       unsubscribe();
     };
-  }, [id, session, client]);
+  }, [id, actorId, client]);
   return { ...query, connected };
 }
 export function useRealtimeHome() {
   const { session } = useAuth();
+  const actorId = session?.user.id;
   const client = useQueryClient();
   useEffect(() => {
-    if (!session || !supabase) return;
+    if (!actorId || !supabase) return;
     const db = supabase;
     void clearLegacyStorage().catch(() => {});
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -190,20 +194,21 @@ export function useRealtimeHome() {
       timer = setTimeout(
         () =>
           void client.invalidateQueries({
-            queryKey: ["home", session.user.id],
+            queryKey: ["home", actorId],
           }),
         180,
       );
     };
     const channel = db
-      .channel(`account:${session.user.id}`)
+      // Removal is asynchronous; never reuse a still-subscribed SDK channel.
+      .channel(`account:${actorId}:${randomUUID()}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "job_offers",
-          filter: `worker_id=eq.${session.user.id}`,
+          filter: `worker_id=eq.${actorId}`,
         },
         refresh,
       )
@@ -213,7 +218,7 @@ export function useRealtimeHome() {
           event: "*",
           schema: "public",
           table: "jobs",
-          filter: `customer_id=eq.${session.user.id}`,
+          filter: `customer_id=eq.${actorId}`,
         },
         refresh,
       )
@@ -223,7 +228,7 @@ export function useRealtimeHome() {
           event: "*",
           schema: "public",
           table: "jobs",
-          filter: `worker_id=eq.${session.user.id}`,
+          filter: `worker_id=eq.${actorId}`,
         },
         refresh,
       )
@@ -232,6 +237,10 @@ export function useRealtimeHome() {
       clearTimeout(timer);
       void db.removeChannel(channel);
     };
-  }, [session, client]);
+  }, [actorId, client]);
+}
+function MarketplaceSignals() {
+  useRealtimeHome();
+  return null;
 }
 export const nativePlatform = Platform.OS !== "web";

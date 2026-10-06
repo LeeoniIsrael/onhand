@@ -117,7 +117,7 @@ export function subscribeToJob(
     return () => {};
   }
   const channel = supabase
-    .channel(`job:${jobId}`)
+    .channel(`job:${jobId}:${randomUUID()}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "jobs", filter: `id=eq.${jobId}` },

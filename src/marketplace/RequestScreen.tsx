@@ -109,6 +109,7 @@ export default function RequestScreen() {
   const selectedAddress = data.addresses.find((a) => a.id === address);
   return (
     <Page
+      key={review ? "review" : "compose"}
       back
       title={review ? "Ready to post." : "Post a job."}
       subtitle={
@@ -132,7 +133,7 @@ export default function RequestScreen() {
               </Copy>
               <Copy color={palette.slate}>
                 {selectedAddress?.street}
-                {selectedAddress?.unit ? `, ${selectedAddress.unit}` : ""},
+                {selectedAddress?.unit ? `, ${selectedAddress.unit}` : ""}{", "}
                 {selectedAddress?.city}
               </Copy>
               <Copy size={14} color={palette.slate}>

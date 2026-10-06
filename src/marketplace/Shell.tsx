@@ -3,7 +3,7 @@ import { View, Pressable, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, usePathname } from "expo-router";
 import { Hand, House, BriefcaseBusiness, UserRound } from "lucide-react-native";
-import { useAuth, useHome, useRealtimeHome } from "./Provider";
+import { useAuth, useHome } from "./Provider";
 import AuthScreen, { PasswordResetScreen } from "./AuthScreen";
 import { Copy, Failure, Line, Loading, palette, QuietAction } from "./ui";
 import { signOutOnDevice, isLocalBackend } from "../services/supabase";
@@ -20,7 +20,6 @@ export default function AppShell({ children }: React.PropsWithChildren) {
         : ["/profile", "/legal"].includes(path);
   const { width: windowWidth } = useWindowDimensions();
   const [width, setWidth] = useState(windowWidth);
-  useRealtimeHome();
   const items = [
     {
       path: "/",

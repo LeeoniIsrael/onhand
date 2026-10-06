@@ -5,7 +5,7 @@ import AppShell from "../marketplace/Shell";
 import RequestScreen from "../marketplace/RequestScreen";
 import HomeScreen from "../marketplace/HomeScreen";
 export default function Preview() {
-  const { screen } = useLocalSearchParams<{ screen?: string }>();
+  const { view } = useLocalSearchParams<{ view?: string }>();
   const { height } = useWindowDimensions();
   if (!__DEV__) return <Redirect href="/" />;
   return (
@@ -28,7 +28,7 @@ export default function Preview() {
         }}
       >
         <AppShell>
-          {screen === "request" ? <RequestScreen /> : <HomeScreen />}
+          {view === "request" ? <RequestScreen /> : <HomeScreen />}
         </AppShell>
       </View>
     </View>

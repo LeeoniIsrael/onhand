@@ -1,4 +1,5 @@
-import { SettingsScreen } from "../features/account/AccountScreens";
-export default function WorkerSettings() {
-  return <SettingsScreen worker />;
+import React from "react";
+import { Redirect } from "expo-router";
+export default function Screen() {
+  return <Redirect href="/profile" />;
 }

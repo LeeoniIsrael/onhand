@@ -82,6 +82,13 @@ export interface HomeData {
   skills: Skill[];
   jobs: MarketplaceJob[];
   offers: IncomingOffer[];
+  bank_payouts: {
+    id: string;
+    amount_cents: number;
+    status: string;
+    arrival_at: string | null;
+    failure_code: string | null;
+  }[];
   payouts: { id: string; amount_cents: number; state: string }[];
 }
 export interface ChatMessage {

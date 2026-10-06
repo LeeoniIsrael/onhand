@@ -15,6 +15,8 @@ const api = createClient(config.API_URL, config.SERVICE_ROLE_KEY, {
 const db = new Client({ connectionString: config.DB_URL });
 await db.connect();
 const password = "LocalOnHand-2026!";
+const fixtureWorkers: string[] = [];
+let fixtureCustomer = "";
 try {
   const { data: existing, error } = await api.auth.admin.listUsers({
     page: 1,
@@ -51,6 +53,7 @@ try {
         [user.id],
       );
     if (role === "worker") {
+      fixtureWorkers.push(user.id);
       await db.query(
         "update public.workers set account_standing='good',identity_verified=true,payouts_ready=true,available=true,stripe_account_id='acct_local_fixture',minimum_pay_cents=2000 where id=$1",
         [user.id],
@@ -64,6 +67,7 @@ try {
         [user.id],
       );
     } else {
+      fixtureCustomer = user.id;
       const { rows } = await db.query(
         "select id from public.saved_addresses where owner_id=$1",
         [user.id],
@@ -75,6 +79,10 @@ try {
         );
     }
   }
+  await db.query(
+    "insert into public.blocked_pairs(customer_id,worker_id) select $1,id from public.workers where id<>all($2::uuid[]) on conflict do nothing",
+    [fixtureCustomer, fixtureWorkers],
+  );
   console.log(
     "Local fixtures ready: customer@onhand.test, worker@onhand.test, worker2@onhand.test. Password: LocalOnHand-2026! (local only).",
   );

@@ -1,1 +1,5 @@
-export { MessagesScreen as default } from "../features/chat/ChatScreens";
+import React from "react";
+import { Redirect } from "expo-router";
+export default function Screen() {
+  return <Redirect href="/jobs" />;
+}

@@ -1,4 +1,4 @@
-import {randomUUID} from "expo-crypto";
+import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 // Keychain values are chunked to stay below platform-specific item limits.
@@ -24,6 +24,23 @@ async function removeGeneration(
     ),
   );
 }
+function manifest(
+  raw: string | null,
+): { generation: string; count: number } | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    return typeof value.generation === "string" &&
+      /^[0-9a-f-]{36}$/i.test(value.generation) &&
+      Number.isInteger(value.count) &&
+      value.count >= 1 &&
+      value.count <= 64
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
 export const sessionStorage = {
   getItem(key: string): Promise<string | null> {
     return serial(async () => {
@@ -33,17 +50,12 @@ export const sessionStorage = {
           : window.sessionStorage.getItem(key);
       const raw = await SecureStore.getItemAsync(`${key}.manifest`, options);
       if (!raw) return null;
-      const manifest = JSON.parse(raw) as { generation: string; count: number };
-      if (
-        !Number.isInteger(manifest.count) ||
-        manifest.count < 1 ||
-        manifest.count > 64
-      )
-        return null;
+      const current = manifest(raw);
+      if (!current) return null;
       const chunks = await Promise.all(
-        Array.from({ length: manifest.count }, (_, i) =>
+        Array.from({ length: current.count }, (_, i) =>
           SecureStore.getItemAsync(
-            `${key}.${manifest.generation}.${i}`,
+            `${key}.${current.generation}.${i}`,
             options,
           ),
         ),
@@ -61,7 +73,8 @@ export const sessionStorage = {
       const old = await SecureStore.getItemAsync(`${key}.manifest`, options);
       const generation = randomUUID();
       const count = Math.ceil(value.length / chunkSize);
-      if (count > 64) throw new Error("Session is too large to store securely");
+      if (count < 1 || count > 64)
+        throw new Error("Session is too large to store securely");
       for (let i = 0; i < count; i++)
         await SecureStore.setItemAsync(
           `${key}.${generation}.${i}`,
@@ -74,8 +87,13 @@ export const sessionStorage = {
         options,
       );
       if (old) {
-        const previous = JSON.parse(old);
-        await removeGeneration(key, previous.generation, previous.count);
+        const previous = manifest(old);
+        if (previous)
+          await removeGeneration(
+            key,
+            previous.generation,
+            previous.count,
+          ).catch(() => {});
       }
     });
   },
@@ -89,8 +107,13 @@ export const sessionStorage = {
       const old = await SecureStore.getItemAsync(`${key}.manifest`, options);
       await SecureStore.deleteItemAsync(`${key}.manifest`);
       if (old) {
-        const previous = JSON.parse(old);
-        await removeGeneration(key, previous.generation, previous.count);
+        const previous = manifest(old);
+        if (previous)
+          await removeGeneration(
+            key,
+            previous.generation,
+            previous.count,
+          ).catch(() => {});
       }
     });
   },

@@ -12,7 +12,7 @@ import {
   simulatedRouting,
 } from "../src/domain/marketplace";
 import { transition } from "../src/domain/lifecycle";
-import { demoPayments } from "../src/services/adapters";
+import { demoPayments } from "./fixtures/payments";
 import { Job, WorkerProfile } from "../src/domain/models";
 const job = (): Job => ({
   ...makeDraft(),

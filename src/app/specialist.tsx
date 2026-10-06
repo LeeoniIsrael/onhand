@@ -1,1 +1,5 @@
-export { SpecialistScreen as default } from "../features/account/AccountScreens";
+import React from "react";
+import { Redirect } from "expo-router";
+export default function Screen() {
+  return <Redirect href="/request" />;
+}

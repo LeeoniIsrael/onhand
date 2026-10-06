@@ -1,14 +1,13 @@
-import { Empty, Screen } from "../design/ui";
-import { go } from "../design/Shell";
+import React from "react";
+import { router } from "expo-router";
+import { Page, Copy, Action, Stack } from "../marketplace/ui";
 export default function NotFound() {
   return (
-    <Screen narrow>
-      <Empty
-        title="Let’s find your way home."
-        text="That page isn’t here."
-        action="Go home"
-        onPress={() => go("/")}
-      />
-    </Screen>
+    <Page title="This page has moved">
+      <Stack>
+        <Copy>Open your jobs or start from Home.</Copy>
+        <Action title="Go home" onPress={() => router.replace("/")} />
+      </Stack>
+    </Page>
   );
 }

@@ -1,52 +1,42 @@
 import React from "react";
-import { Slot } from "expo-router";
+import { Slot, usePathname, type ErrorBoundaryProps } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Empty, Screen } from "../design/ui";
-import { View } from "react-native";
-import { Shell } from "../design/Shell";
+import { MarketplaceProvider } from "../marketplace/Provider";
+import AppShell from "../marketplace/Shell";
+import NotificationBridge from "../marketplace/NotificationBridge";
+import { Action, Copy, Page, Stack } from "../marketplace/ui";
 import "../global.css";
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
-});
 export default function RootLayout() {
+  const path = usePathname();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" />
-          <Shell>
+        <MarketplaceProvider>
+          <NotificationBridge />
+          <StatusBar style="dark" />
+          {__DEV__ && path === "/dev-preview" ? (
             <Slot />
-          </Shell>
-        </QueryClientProvider>
+          ) : (
+            <AppShell>
+              <Slot />
+            </AppShell>
+          )}
+        </MarketplaceProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
-
-export function ErrorBoundary({
-  retry,
-}: import("expo-router").ErrorBoundaryProps) {
+export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return (
     <SafeAreaProvider>
-      <Fallback retry={retry} />
+      <Page title="Let’s try that again">
+        <Stack>
+          <Copy>Your account data is saved securely. Reload to continue.</Copy>
+          <Action title="Reload this screen" onPress={retry} />
+        </Stack>
+      </Page>
     </SafeAreaProvider>
-  );
-}
-
-function Fallback({ retry }: { retry: () => void }) {
-  return (
-    <View style={{ flex: 1, backgroundColor: "#101112" }}>
-      <Screen narrow>
-        <Empty
-          title="Let’s try that again."
-          text="Your saved progress is still here."
-          action="Reload this screen"
-          onPress={retry}
-        />
-      </Screen>
-    </View>
   );
 }

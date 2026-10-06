@@ -13,13 +13,13 @@ import {
   onlineManager,
   useQuery,
   useQueryClient,
-  useMutation,
 } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import * as Network from "expo-network";
 import { supabase, subscribeToJob } from "../services/supabase";
+import { clearLegacyStorage } from "../services/legacy-cleanup";
 import { useRequestDraft } from "./draft";
-import { marketplace, requestKey } from "./api";
+import { marketplace } from "./api";
 const AuthContext = createContext<{
   session: Session | null;
   loading: boolean;
@@ -61,6 +61,7 @@ export function MarketplaceProvider({ children }: React.PropsWithChildren) {
   });
   const actor = useRef<string | null>(null);
   useEffect(() => {
+    void clearLegacyStorage().catch(() => {});
     if (!supabase) return;
     const db = supabase;
     let mounted = true;
@@ -176,31 +177,13 @@ export function useJob(id: string) {
   }, [id, session, client]);
   return { ...query, connected };
 }
-export function useAction(action: string) {
-  const client = useQueryClient();
-  const { session } = useAuth();
-  return useMutation({
-    mutationFn: (variables: {
-      payload: Record<string, unknown>;
-      key?: string;
-    }) =>
-      marketplace.action(
-        action,
-        variables.payload,
-        variables.key ?? requestKey(),
-      ),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["home", session?.user.id] });
-      void client.invalidateQueries({ queryKey: ["job", session?.user.id] });
-    },
-  });
-}
 export function useRealtimeHome() {
   const { session } = useAuth();
   const client = useQueryClient();
   useEffect(() => {
     if (!session || !supabase) return;
     const db = supabase;
+    void clearLegacyStorage().catch(() => {});
     let timer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
       clearTimeout(timer);

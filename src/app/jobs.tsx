@@ -1,1 +1,1 @@
-export { JobsScreen as default } from "../features/jobs/JobScreens";
+export { default } from "../marketplace/JobsScreen";

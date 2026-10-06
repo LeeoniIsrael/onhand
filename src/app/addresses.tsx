@@ -1,1 +1,1 @@
-export { AddressesScreen as default } from "../features/account/AccountScreens";
+export { default } from "../marketplace/AddressesScreen";

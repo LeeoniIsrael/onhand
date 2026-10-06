@@ -1,1 +1,1 @@
-export { ProfileScreen as default } from "../features/account/AccountScreens";
+export { default } from "../marketplace/AccountScreen";

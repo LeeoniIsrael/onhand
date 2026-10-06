@@ -1,9 +1,10 @@
+import { logicalSessionKey } from "./session-key";
+import { sessionChunks } from "./session-chunks";
 import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 // Keychain values are chunked to stay below platform-specific item limits.
 // A generation manifest is written last so interrupted writes retain the old session.
-const chunkSize = 1800;
 let queue: Promise<unknown> = Promise.resolve();
 function serial<T>(operation: () => Promise<T>): Promise<T> {
   const next = queue.then(operation, operation);
@@ -47,7 +48,7 @@ export const sessionStorage = {
       if (Platform.OS === "web")
         return typeof window === "undefined"
           ? null
-          : window.sessionStorage.getItem(key);
+          : window.sessionStorage.getItem(logicalSessionKey(key));
       const raw = await SecureStore.getItemAsync(`${key}.manifest`, options);
       if (!raw) return null;
       const current = manifest(raw);
@@ -67,18 +68,19 @@ export const sessionStorage = {
     return serial(async () => {
       if (Platform.OS === "web") {
         if (typeof window !== "undefined")
-          window.sessionStorage.setItem(key, value);
+          window.sessionStorage.setItem(logicalSessionKey(key), value);
         return;
       }
       const old = await SecureStore.getItemAsync(`${key}.manifest`, options);
       const generation = randomUUID();
-      const count = Math.ceil(value.length / chunkSize);
+      const chunks = sessionChunks(value);
+      const count = chunks.length;
       if (count < 1 || count > 64)
         throw new Error("Session is too large to store securely");
       for (let i = 0; i < count; i++)
         await SecureStore.setItemAsync(
           `${key}.${generation}.${i}`,
-          value.slice(i * chunkSize, (i + 1) * chunkSize),
+          chunks[i],
           options,
         );
       await SecureStore.setItemAsync(
@@ -101,7 +103,7 @@ export const sessionStorage = {
     return serial(async () => {
       if (Platform.OS === "web") {
         if (typeof window !== "undefined")
-          window.sessionStorage.removeItem(key);
+          window.sessionStorage.removeItem(logicalSessionKey(key));
         return;
       }
       const old = await SecureStore.getItemAsync(`${key}.manifest`, options);

@@ -52,15 +52,8 @@ export interface MarketplaceJob {
 export interface IncomingOffer {
   id: string;
   expires_at: string;
-  score: number;
   eta_seconds: number;
   distance_m: number;
-  reasons: {
-    quality: number;
-    reliability: number;
-    skill: number;
-    newcomer: boolean;
-  };
   job: MarketplaceJob;
 }
 export interface WorkerAccount {

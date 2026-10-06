@@ -295,8 +295,7 @@ function Offer({ offer }: { offer: IncomingOffer }) {
       <Line>
         <MapPin size={16} color={palette.slate} />
         <Copy size={14} color={palette.slate}>
-          {offer.job.approximate_zone} · {(offer.distance_m / 1000).toFixed(1)}
-          km away
+          {offer.job.approximate_zone} · within {offer.distance_m / 1000} km
         </Copy>
       </Line>
       <Copy size={13} color={palette.slate}>

@@ -6,7 +6,11 @@ import { clearDeviceToken } from "./device-token";
 import DeviceAlerts from "./DeviceAlerts";
 import { useHome } from "./Provider";
 import { categories, taxonomy, type Skill } from "../domain/models";
-import { isLocalBackend, requireDatabase } from "../services/supabase";
+import {
+  signOutOnDevice,
+  isLocalBackend,
+  requireDatabase,
+} from "../services/supabase";
 import { marketplace, friendlyError, money } from "./api";
 import {
   Action,
@@ -54,10 +58,7 @@ export default function AccountScreen() {
     setError(null);
     try {
       await clearDeviceToken().catch(() => {});
-      const { error } = await requireDatabase().auth.signOut({
-        scope: "local",
-      });
-      if (error) throw error;
+      await signOutOnDevice();
       router.replace("/");
     } catch (e) {
       setError(friendlyError(e));
@@ -70,7 +71,7 @@ export default function AccountScreen() {
     setError(null);
     try {
       await marketplace.deleteAccount();
-      await requireDatabase().auth.signOut({ scope: "local" });
+      await signOutOnDevice();
       router.replace("/");
     } catch (e) {
       setError(friendlyError(e));

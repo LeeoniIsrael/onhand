@@ -11,7 +11,7 @@ export function friendlyError(error: unknown): string {
       : typeof error === "object" && error && "message" in error
         ? String(error.message)
         : "Something went wrong. Try again.";
-  if (/network|fetch|connection|timeout/i.test(message))
+  if (/network|fetch|connection|timeout|abort/i.test(message))
     return "Connection interrupted. Check your connection, then try again.";
   if (/duplicate key.*reviews/i.test(message))
     return "You have already reviewed this job.";

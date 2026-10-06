@@ -29,10 +29,11 @@ export default function RequestScreen() {
   const systemReduced = useReducedMotion();
   const reduced = systemReduced || data?.settings?.reduced_motion;
   const draft = useRequestDraft();
-  const { title, description, category, budget, timing, scheduled, duration } =
-    draft;
+  const { description, category, budget, timing, scheduled, duration } = draft;
+  const plain = description.trim().replace(/\s+/g, " ");
+  const first = plain.match(/^[^.!?]+[.!?]?/)?.[0] || plain;
+  const title = (first.length >= 5 ? first : plain).slice(0, 80);
   const address = draft.address || data?.addresses[0]?.id || "";
-  const setTitle = (title: string) => draft.edit({ title });
   const setDescription = (description: string) => draft.edit({ description });
   const setCategory = (category: Category) => draft.edit({ category });
   const setBudget = (budget: string) => draft.edit({ budget });
@@ -48,6 +49,7 @@ export default function RequestScreen() {
   const setDuration = (duration: string) => draft.edit({ duration });
   const [choosingCategory, setChoosingCategory] = useState(false);
   const [review, setReview] = useState(false);
+  const [options, setOptions] = useState(timing !== "now");
   const cents = Math.round(Number(budget) * 100);
   const now = useNow(30000);
   const regulated = ["Electrical", "Plumbing", "HVAC"].includes(category);
@@ -108,7 +110,7 @@ export default function RequestScreen() {
   return (
     <Page
       back
-      title={review ? "Ready to post." : "What needs doing?"}
+      title={review ? "Ready to post." : "Post a job."}
       subtitle={
         review
           ? "One clear job. One agreed price."
@@ -120,9 +122,8 @@ export default function RequestScreen() {
           <>
             <View style={{ paddingVertical: 12, gap: 12 }}>
               <Copy weight="700" size={26}>
-                {title}
+                {description}
               </Copy>
-              <Copy color={palette.slate}>{description}</Copy>
               <Copy size={48} weight="700">
                 {money(cents)}
               </Copy>
@@ -162,20 +163,16 @@ export default function RequestScreen() {
         ) : (
           <>
             <Input
-              label="Job title"
-              placeholder="Mount two shelves in my living room"
-              value={title}
-              onChangeText={setTitle}
-              maxLength={120}
-            />
-            <Input
-              label="A little more detail"
-              placeholder="What needs doing, and anything the worker should bring."
+              label="What needs doing?"
+              placeholder="Mount two shelves in my living room. Please bring a drill and a level."
               value={description}
               onChangeText={setDescription}
               maxLength={4000}
               multiline
             />
+            <Copy size={13} color={palette.slate}>
+              Keep phone numbers and exact addresses out of the description.
+            </Copy>
             <Stack style={{ gap: 10 }}>
               <Copy size={14} weight="600">
                 Type of work
@@ -278,53 +275,64 @@ export default function RequestScreen() {
                 onPress={() => router.push("/addresses")}
               />
             </Stack>
-            <Stack style={{ gap: 10 }}>
-              <Copy size={14} weight="600">
-                When
-              </Copy>
-              <Line>
-                {(["now", "today", "scheduled"] as const).map((t) => (
-                  <Pressable
-                    key={t}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: timing === t }}
-                    onPress={() => setTiming(t)}
-                    style={{
-                      flex: 1,
-                      minHeight: 48,
-                      justifyContent: "center",
-                      alignItems: "center",
-                      backgroundColor:
-                        timing === t ? palette.wash : palette.white,
-                      borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: timing === t ? palette.blue : palette.line,
-                    }}
-                  >
-                    <Copy
-                      size={14}
-                      color={timing === t ? palette.blue : palette.ink}
-                    >
-                      {t === "now"
-                        ? "Now"
-                        : t === "today"
-                          ? "Today"
-                          : "Schedule"}
-                    </Copy>
-                  </Pressable>
-                ))}
-              </Line>
-              {timing === "scheduled" && (
-                <SchedulePicker value={scheduled} onChange={setScheduled} />
-              )}
-            </Stack>
-            <Input
-              label="Estimated minutes of work"
-              value={duration}
-              onChangeText={setDuration}
-              keyboardType="number-pad"
-              maxLength={4}
+            <QuietAction
+              title={
+                options ? "Hide timing and duration" : "Timing and duration"
+              }
+              onPress={() => setOptions(!options)}
             />
+            {options && (
+              <>
+                <Stack style={{ gap: 10 }}>
+                  <Copy size={14} weight="600">
+                    When
+                  </Copy>
+                  <Line>
+                    {(["now", "today", "scheduled"] as const).map((t) => (
+                      <Pressable
+                        key={t}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: timing === t }}
+                        onPress={() => setTiming(t)}
+                        style={{
+                          flex: 1,
+                          minHeight: 48,
+                          justifyContent: "center",
+                          alignItems: "center",
+                          backgroundColor:
+                            timing === t ? palette.wash : palette.white,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor:
+                            timing === t ? palette.blue : palette.line,
+                        }}
+                      >
+                        <Copy
+                          size={14}
+                          color={timing === t ? palette.blue : palette.ink}
+                        >
+                          {t === "now"
+                            ? "Now"
+                            : t === "today"
+                              ? "Today"
+                              : "Schedule"}
+                        </Copy>
+                      </Pressable>
+                    ))}
+                  </Line>
+                  {timing === "scheduled" && (
+                    <SchedulePicker value={scheduled} onChange={setScheduled} />
+                  )}
+                </Stack>
+                <Input
+                  label="Estimated minutes of work"
+                  value={duration}
+                  onChangeText={setDuration}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                />
+              </>
+            )}
             {regulated && (
               <Notice>
                 {coverage.isPending

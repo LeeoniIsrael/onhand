@@ -6,11 +6,18 @@ import { Hand, House, BriefcaseBusiness, UserRound } from "lucide-react-native";
 import { useAuth, useHome, useRealtimeHome } from "./Provider";
 import AuthScreen, { PasswordResetScreen } from "./AuthScreen";
 import { Copy, Failure, Line, Loading, palette, QuietAction } from "./ui";
-import { requireDatabase, isLocalBackend } from "../services/supabase";
+import { signOutOnDevice, isLocalBackend } from "../services/supabase";
 export default function AppShell({ children }: React.PropsWithChildren) {
   const auth = useAuth();
   const home = useHome({ poll: true });
-  const path = usePathname();
+  const actualPath = usePathname();
+  const path = actualPath === "/dev-preview" ? "/" : actualPath;
+  const selected = (destination: string) =>
+    destination === "/"
+      ? ["/", "/request", "/addresses"].includes(path)
+      : destination === "/jobs"
+        ? ["/jobs", "/job"].includes(path)
+        : ["/profile", "/legal"].includes(path);
   const { width: windowWidth } = useWindowDimensions();
   const [width, setWidth] = useState(windowWidth);
   useRealtimeHome();
@@ -40,15 +47,19 @@ export default function AppShell({ children }: React.PropsWithChildren) {
         ) : auth.recovering ? (
           <PasswordResetScreen />
         ) : home.isPending ? (
-          <Loading />
+          <Loading
+            text={
+              home.fetchStatus === "paused"
+                ? "You’re offline. Reconnect to load your account."
+                : "Loading your account…"
+            }
+          />
         ) : home.error ? (
           <>
             <Failure error={home.error} retry={() => void home.refetch()} />
             <QuietAction
               title="Sign out"
-              onPress={() =>
-                void requireDatabase().auth.signOut({ scope: "local" })
-              }
+              onPress={() => void signOutOnDevice()}
             />
           </>
         ) : (
@@ -99,7 +110,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
                       >
                         <Copy
                           color={
-                            path === item.path ? palette.blue : palette.slate
+                            selected(item.path) ? palette.blue : palette.slate
                           }
                           weight="600"
                         >
@@ -126,7 +137,7 @@ export default function AppShell({ children }: React.PropsWithChildren) {
                 }}
               >
                 {items.map((item) => {
-                  const active = item.path === path;
+                  const active = selected(item.path);
                   const Icon = item.icon;
                   return (
                     <Pressable

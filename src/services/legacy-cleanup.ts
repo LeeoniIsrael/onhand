@@ -5,5 +5,7 @@ export async function clearLegacyStorage() {
   if (url) {
     const ref = new URL(url).hostname.split(".")[0];
     await AsyncStorage.removeItem(`sb-${ref}-auth-token`);
+    if (typeof window !== "undefined")
+      window.sessionStorage.removeItem(`sb-${ref}-auth-token`);
   }
 }

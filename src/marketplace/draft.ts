@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { Category } from "../domain/models";
 interface Draft {
-  title: string;
   description: string;
   category: Category;
   budget: string;
@@ -11,12 +10,11 @@ interface Draft {
   duration: string;
 }
 const initial: Draft = {
-  title: "",
   description: "",
   category: "General repair",
   budget: "",
   address: "",
-  timing: "today",
+  timing: "now",
   scheduled: "",
   duration: "60",
 };

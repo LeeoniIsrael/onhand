@@ -1,7 +1,9 @@
 import "react-native-url-polyfill/auto";
 import { validatePublicConfig } from "./public-config";
+import { Platform } from "react-native";
 import { randomUUID } from "expo-crypto";
 import { createClient } from "@supabase/supabase-js";
+import { boundedFetch } from "./bounded-fetch";
 import { sessionStorage } from "./session-storage";
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key =
@@ -13,16 +15,26 @@ export const configurationError = validatePublicConfig(
   key,
   isLocalBackend,
 );
+const authStorageKey =
+  !configurationError && url
+    ? Platform.OS === "web"
+      ? `onhand.web.${new URL(url).origin}.${randomUUID()}`
+      : `sb-${new URL(url).hostname.split(".")[0]}-auth-token`
+    : "onhand.unconfigured";
 export const supabase =
   !configurationError && url && key
     ? createClient(url, key, {
         auth: {
           storage: sessionStorage,
+          storageKey: authStorageKey,
           autoRefreshToken: true,
           persistSession: true,
           detectSessionInUrl: false,
         },
-        global: { headers: { "X-Client-Info": "onhand/1.0.0" } },
+        global: {
+          fetch: boundedFetch,
+          headers: { "X-Client-Info": "onhand/1.0.0" },
+        },
       })
     : null;
 // Check the selected account type before publishing a session to the UI.
@@ -40,6 +52,7 @@ export async function signInForRole(
       detectSessionInUrl: false,
       storageKey: `onhand.login.${randomUUID()}`,
     },
+    global: { fetch: boundedFetch },
   });
   const { data, error } = await temporary.auth.signInWithPassword({
     email,
@@ -63,6 +76,32 @@ export async function signInForRole(
   });
   if (result.error) throw result.error;
   return { session: result.data.session!, home: home.data };
+}
+export async function signOutOnDevice() {
+  const raw = await sessionStorage.getItem(authStorageKey);
+  let previous: { access_token: string; refresh_token: string } | null = null;
+  try {
+    previous = raw ? JSON.parse(raw) : null;
+  } catch {}
+  await sessionStorage.removeItem(authStorageKey);
+  // Empty local storage lets the SDK emit SIGNED_OUT without a network call.
+  await requireDatabase().auth.signOut({ scope: "local" });
+  if (previous?.access_token && previous.refresh_token) {
+    const tokens = previous;
+    void (async () => {
+      const isolated = createClient(url!, key!, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          storageKey: `onhand.logout.${randomUUID()}`,
+        },
+        global: { fetch: boundedFetch },
+      });
+      await isolated.auth.setSession(tokens);
+      await isolated.auth.signOut({ scope: "local" });
+    })().catch(() => {});
+  }
 }
 export function requireDatabase() {
   if (!supabase) throw new Error(configurationError || "Database unavailable");
@@ -124,12 +163,20 @@ export async function uploadJobPhoto(
     >
   )[contentType];
   if (!ext) throw new Error("Choose a JPEG, PNG or WebP image.");
-  const { data, error } = await requireDatabase()
-    .storage.from("job-photos")
-    .upload(`${jobId}/${photoId}.${ext}`, bytes, {
-      contentType,
-      upsert: false,
-    });
-  if (error) throw error;
+  const { data, error } = await requireDatabase().functions.invoke("media", {
+    body: bytes,
+    headers: {
+      "Content-Type": contentType,
+      "x-job-id": jobId,
+      "x-photo-id": photoId,
+    },
+  });
+  if (error) {
+    let message = "Photo upload could not be completed. Try again.";
+    try {
+      message = (await error.context?.json())?.error || message;
+    } catch {}
+    throw new Error(message);
+  }
   return data.path;
 }

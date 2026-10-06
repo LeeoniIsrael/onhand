@@ -719,6 +719,139 @@ try {
       assert.ok([400, 401, 503].includes(webhook.status));
     },
   );
+  await check(
+    "operator reviews are audited, private and separate from payout readiness",
+    async () => {
+      const candidate = await user("worker");
+      const input = {
+        p_worker: candidate.id,
+        p_approved: true,
+        p_insured: false,
+        p_operator: "Local test operator",
+        p_note: "Synthetic identity evidence checked in test",
+      };
+      assert.ok((await candidate.api.rpc("review_worker", input)).error);
+      assert.ifError((await admin.rpc("review_worker", input)).error);
+      const home = await candidate.api.rpc("marketplace_home");
+      assert.equal(home.data.worker.identity_verified, true);
+      assert.equal(home.data.worker.payouts_ready, false);
+      assert.ok(
+        (
+          await action(candidate, "availability", {
+            available: true,
+            latitude: 40.71,
+            longitude: -73.96,
+          })
+        ).error,
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from private.worker_reviews where worker_id=$1",
+            [candidate.id],
+          )
+        ).rows[0].n,
+        1,
+      );
+    },
+  );
+  await check(
+    "scheduled regulated work checks credentials at current time if the appointment is late",
+    async () => {
+      const requester = await user("customer"),
+        specialist = await user("worker");
+      const saved = await action(requester, "save_address", {
+        street: "501 Local Street",
+        city: "Brooklyn",
+        zone: "NY",
+        latitude: 40.71,
+        longitude: -73.96,
+      });
+      assert.ifError(saved.error);
+      assert.ifError(
+        (
+          await action(specialist, "worker_setup", {
+            skills: ["electrical.fixture"],
+            minimum_pay_cents: 5000,
+            service_radius_m: 10000,
+            bio: "Scheduled fixture",
+          })
+        ).error,
+      );
+      await db.query(
+        "update public.workers set account_standing='good',identity_verified=true,payouts_ready=true where id=$1",
+        [specialist.id],
+      );
+      assert.ifError(
+        (
+          await action(specialist, "availability", {
+            available: true,
+            latitude: 40.711,
+            longitude: -73.961,
+          })
+        ).error,
+      );
+      await db.query(
+        "insert into public.blocked_pairs(customer_id,worker_id) select $1,id from public.workers where id<>$2",
+        [requester.id, specialist.id],
+      );
+      const scheduled = await action(requester, "create_job", {
+        ...draft,
+        address_id: saved.data.id,
+        skill: "electrical.fixture",
+        urgency: "scheduled",
+        scheduled_at: new Date(Date.now() + 2 * 86400000).toISOString(),
+      });
+      assert.ifError(scheduled.error);
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from public.job_offers where job_id=$1",
+            [scheduled.data.id],
+          )
+        ).rows[0].n,
+        0,
+      );
+      await db.query(
+        "update public.jobs set scheduled_at=now()-interval '2 days' where id=$1",
+        [scheduled.data.id],
+      );
+      await db.query(
+        "insert into public.licenses(worker_id,skill,jurisdiction,verified,expires_at) values($1,'electrical.fixture','NY',true,now()-interval '1 hour')",
+        [specialist.id],
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from private.ranked_candidates($1)",
+            [scheduled.data.id],
+          )
+        ).rows[0].n,
+        0,
+      );
+      assert.ifError(
+        (
+          await admin.rpc("review_license", {
+            p_worker: specialist.id,
+            p_skill: "electrical.fixture",
+            p_zone: "NY",
+            p_expires: new Date(Date.now() + 7 * 86400000).toISOString(),
+            p_operator: "Local test operator",
+            p_note: "Synthetic renewal checked in test",
+          })
+        ).error,
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select count(*)::int as n from private.ranked_candidates($1)",
+            [scheduled.data.id],
+          )
+        ).rows[0].n,
+        1,
+      );
+    },
+  );
   console.log(
     `${passed} database integration checks passed against PostgreSQL ${(await db.query("show server_version")).rows[0].server_version}`,
   );

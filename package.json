@@ -3,22 +3,21 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
-    "@expo/ui": "~57.0.21",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-native-community/slider": "5.2.0",
-    "@shopify/flash-list": "2.0.2",
+    "@react-native-community/datetimepicker": "9.1.0",
     "@stripe/stripe-react-native": "0.64.0",
     "@supabase/supabase-js": "^2.117.2",
     "@tanstack/react-query": "^5.104.0",
     "expo": "~57.0.26",
     "expo-constants": "~57.0.20",
     "expo-crypto": "~57.0.3",
+    "expo-dev-client": "~57.0.19",
     "expo-device": "~57.0.2",
     "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
-    "expo-glass-effect": "~57.0.4",
     "expo-haptics": "~57.0.3",
     "expo-image": "~57.0.5",
+    "expo-image-manipulator": "~57.0.20",
     "expo-image-picker": "~57.0.20",
     "expo-linking": "~57.0.11",
     "expo-location": "~57.0.20",
@@ -28,19 +27,17 @@
     "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
-    "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
-    "expo-web-browser": "~57.0.3",
     "lucide-react-native": "^1.49.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
-    "react-native-maps": "1.27.2",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
+    "react-native-url-polyfill": "^4.0.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
     "zustand": "^5.0.15"
@@ -69,10 +66,31 @@
     "test": "tsx --test tests/*.test.ts",
     "export": "expo export --platform web",
     "format": "prettier --write src tests docs",
-    "export:native": "expo export --platform ios --platform android --output-dir dist-native"
+    "export:native": "expo export --platform ios --platform android --output-dir dist-native",
+    "test:db": "tsx tests/database.integration.mts",
+    "test:load": "tsx tests/database.load.mts",
+    "local:env": "node scripts/local-env.mjs",
+    "local:seed": "tsx scripts/seed-local.mts",
+    "local:db": "npx supabase@latest start --exclude studio,imgproxy,logflare,vector,postgres-meta,supavisor",
+    "local:functions": "npx supabase@latest functions serve --env-file supabase/.env.local --no-verify-jwt",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "check:edge": "npx deno check --config supabase/functions/deno.json --node-modules-dir=none supabase/functions/payments/index.ts supabase/functions/stripe-webhook/index.ts supabase/functions/account/index.ts supabase/functions/connect/index.ts supabase/functions/operations/index.ts",
+    "release:check": "node scripts/release-check.mjs",
+    "test:auth": "tsx tests/auth.integration.mts",
+    "postinstall": "node scripts/patch-query-decoder.mjs",
+    "eas-build-post-install": "node scripts/build-gate.mjs",
+    "operator": "tsx scripts/operator.mts"
   },
   "private": true,
   "engines": {
     "node": ">=24.3.0"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "11.1.1"
+    },
+    "query-string": {
+      "decode-uri-component": "0.5.0"
+    }
   }
 }

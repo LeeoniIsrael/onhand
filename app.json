@@ -6,18 +6,23 @@
     "orientation": "portrait",
     "icon": "./assets/brand/icon.png",
     "scheme": "onhand",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "com.onhand.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#ff641f",
+        "backgroundColor": "#214DD8",
         "foregroundImage": "./assets/brand/foreground.png"
       },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.onhand.app"
+      "predictiveBackGestureEnabled": true,
+      "package": "com.onhand.app",
+      "versionCode": 1
     },
     "web": {
       "output": "single",
@@ -28,7 +33,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#101112",
+          "backgroundColor": "#F8FAFC",
           "image": "./assets/brand/splash.png",
           "imageWidth": 76
         }
@@ -38,15 +43,24 @@
         {
           "photosPermission": "Let OnHand attach a photo to your request.",
           "cameraPermission": "Let OnHand photograph what needs fixing.",
-          "microphonePermission": "Let OnHand record a short problem video."
+          "microphonePermission": false
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Let OnHand find help near your home."
+          "locationWhenInUsePermission": "Let OnHand locate your job or find suitable work nearby."
         }
-      ]
+      ],
+      "expo-secure-store",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "enableGooglePay": false
+        }
+      ],
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

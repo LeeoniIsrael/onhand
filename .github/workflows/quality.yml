@@ -1,0 +1,40 @@
+name: OnHand quality checks
+# Manual only so this change does not silently consume paid runner minutes.
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run check:edge
+      - run: npm run export
+      - run: npm run export:native
+      - run: npx expo-doctor
+      - run: npm run local:db
+      - run: npm run local:env
+      - name: Start local Edge Functions
+        run: npm run local:functions > /tmp/onhand-functions.log 2>&1 &
+      - name: Wait for local function runtime
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl --silent --output /dev/null --write-out '%{http_code}' --request POST http://127.0.0.1:54321/functions/v1/account)
+            if [ "$code" = "401" ]; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/onhand-functions.log
+          exit 1
+      - run: npm run test:auth
+      - run: npm run test:db
+      - run: npm run test:load
+      - name: Stop local services
+        if: always()
+        run: npx supabase@latest stop

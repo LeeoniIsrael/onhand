@@ -1,6 +1,6 @@
 # Validation — 6 October 2026
 
-Tests ran against the final source and a freshly recreated local Supabase/PostgreSQL database. No hosted production deployment, live payment/push, external email, signed store binary or store submission was performed.
+Tests ran against the final source and a freshly recreated local Supabase/PostgreSQL database. Lint, strict TypeScript, all unit/Auth/database checks and web/iOS/Android exports were also rerun successfully using the bundled Node 24.19.0 runtime. No hosted production deployment, live payment/push, external email, signed store binary or store submission was performed.
 
 ## Automated results
 
